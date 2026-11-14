@@ -2,8 +2,10 @@
 
 import sys
 sys.path.insert(0, '')
+sys.path.insert(0, __import__('os').path.dirname(__import__('os').path.abspath(__file__)))
 import random
 import graphtec
+import backend
 
 def pads1(g):
   for i in range(0,20):
@@ -21,7 +23,7 @@ def pads2(g):
       y = 0.4+0.1*j
       g.path([(x,y),(x,y+0.05)])
 
-g = graphtec.graphtec()
+g = backend.make()  # --cameo for Cameo 3/4/5 and Cameo 5 Alpha; see backend.py
 
 g.start()
 

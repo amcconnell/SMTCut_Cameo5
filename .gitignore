@@ -3,3 +3,7 @@
 _tmp_*
 result.gpgl
 config.json
+*.gpgl
+*.gpgl.png
+__pycache__/
+.pytest_cache/
