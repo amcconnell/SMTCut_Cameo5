@@ -1,0 +1,15 @@
+# Gerber reader (default input path)
+shapely>=2.0
+# USB access for the cameo backend (macOS also needs: brew install libusb)
+pyusb>=1.2.1
+libusb1>=3.0; sys_platform == "darwin"
+# tools/preview.py
+matplotlib>=3.5
+# optional: --merge 1
+numpy
+scipy
+svgwrite
+# optional: Bluetooth LE connection (--bluetooth_name)
+# bleak
+# development
+pytest

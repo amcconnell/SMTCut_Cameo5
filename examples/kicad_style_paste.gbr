@@ -1,0 +1,98 @@
+G04 Synthetic KiCad 7 style paste layer for SMTCut tests*
+G04 Exercises macros, obrounds, rotation, regions with arcs and polarity*
+%TF.GenerationSoftware,SMTCut,tests,1.0*%
+%TF.FileFunction,Paste,Top*%
+%TF.FilePolarity,Positive*%
+%FSLAX46Y46*%
+G04 Gerber Fmt 4.6, Leading zero omitted, Abs format (unit mm)*
+%MOMM*%
+%LPD*%
+G01*
+G04 APERTURE MACROS*
+%AMRoundRect*
+0 Rectangle with rounded corners*
+0 $1 Rounding radius*
+0 $2 $3 $4 $5 $6 $7 $8 $9 X,Y pos of 4 corners*
+0 Add a 4 corners polygon primitive as box body*
+4,1,4,$2,$3,$4,$5,$6,$7,$8,$9,$2,$3,0*
+0 Add four circle primitives for the rounded corners*
+1,1,$1+$1,$2,$3*
+1,1,$1+$1,$4,$5*
+1,1,$1+$1,$6,$7*
+1,1,$1+$1,$8,$9*
+0 Add four rect primitives between the rounded corners*
+20,1,$1+$1,$2,$3,$4,$5,0*
+20,1,$1+$1,$4,$5,$6,$7,0*
+20,1,$1+$1,$6,$7,$8,$9,0*
+20,1,$1+$1,$8,$9,$2,$3,0*%
+%AMRotRect*
+0 Rectangle, with rotation*
+0 The origin of the aperture is its center*
+0 $1 length*
+0 $2 width*
+0 $3 Rotation angle, in degrees counterclockwise*
+0 Add horizontal line*
+21,1,$1,$2,0,0,$3*%
+%AMScaledCircle*
+$4=$1x0.5*
+1,1,$4+$4,0,0*
+1,0,$4,0,0*%
+G04 APERTURE END LIST*
+%TA.AperFunction,SMDPad,CuDef*%
+%ADD10RoundRect,0.250000X-0.450000X-0.350000X0.450000X-0.350000X0.450000X0.350000X-0.450000X0.350000X0*%
+%ADD11O,0.600000X1.200000*%
+%ADD12C,0.800000*%
+%ADD13RotRect,1.000000X0.500000X45.000000*%
+%ADD14R,0.300000X0.800000*%
+%ADD15ScaledCircle,1.000000*%
+%ADD16P,1.000000X6X0*%
+%TD*%
+G04 Roundrect pads (an 0805 footprint)*
+D10*
+X10000000Y10000000D03*
+X12000000Y10000000D03*
+G04 Oval pads*
+D11*
+X15000000Y10000000D03*
+X16500000Y10000000D03*
+G04 Round pad*
+D12*
+X19000000Y10000000D03*
+G04 45 degree rotated rectangle via macro*
+D13*
+X10000000Y14000000D03*
+G04 Rectangle with aperture rotation*
+%LR90.0*%
+D14*
+X13000000Y14000000D03*
+%LR0.0*%
+G04 Annulus from macro exposure off*
+D15*
+X16000000Y14000000D03*
+G04 Hexagon*
+D16*
+X19000000Y14000000D03*
+G04 Custom pad region with an arc edge*
+G75*
+G36*
+X9500000Y17000000D02*
+X11500000Y17000000D01*
+X11500000Y18000000D01*
+G03*
+X9500000Y18000000I-1000000J0D01*
+G01*
+X9500000Y17000000D01*
+G37*
+G04 Clear polarity notch out of a rectangle region*
+G36*
+X13000000Y17000000D02*
+X15000000Y17000000D01*
+X15000000Y19000000D01*
+X13000000Y19000000D01*
+X13000000Y17000000D01*
+G37*
+%LPC*%
+D12*
+X14000000Y18000000D03*
+%LPD*%
+M02*

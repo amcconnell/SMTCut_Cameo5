@@ -10,7 +10,11 @@ import copy
 import json
 
 
-configFilePath = "config.json"
+# config.json lives next to the scripts, so the CLI and the GUI share it no
+# matter which directory they are started from. SMTCUT_CONFIG overrides it.
+configFilePath = os.environ.get(
+    "SMTCUT_CONFIG",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json"))
 
 defaultConfig = {
     "inputPath": "",
@@ -83,7 +87,7 @@ def readConfigFile(path):
 
 
 
-def writeConfigFile(config, path=configFilePath):
+def writeConfigFile(config, path=None):
     """Dump config object to file.
 
     Args:
@@ -93,6 +97,7 @@ def writeConfigFile(config, path=configFilePath):
     """
     # The string replacements are just there to remove unnecessary
     # trailing zeros, to improve readability.
+    path = path or configFilePath
     jsonString = json.dumps(config, indent=4).replace(".0,", ",").replace(".0\n", "\n")
     with open(path, "w") as file:
         file.write(jsonString)
@@ -100,7 +105,7 @@ def writeConfigFile(config, path=configFilePath):
 
 
 
-def getConfig(path=configFilePath):
+def getConfig(path=None):
     """Get configuration settings from file with fallback to default values.
 
     Args:
@@ -111,7 +116,39 @@ def getConfig(path=configFilePath):
         dict: Configuration settings.
     """
     config = getDefaultConfig()
-    fileConfig = readConfigFile(path)
+    fileConfig = readConfigFile(path or configFilePath)
     # Use values from config file where defined, otherwise use default values.
     config.update(fileConfig)
     return config
+
+
+
+
+def getMaterials(path=None):
+    """Saved cutting settings per stencil material, from the "materials"
+    section of the config file (written by "smtcut.py --save_material NAME").
+
+    Returns:
+        dict: material name -> dict of settings.
+    """
+    path = path or configFilePath
+    if not os.path.isfile(path):
+        return {}
+    return readConfigFile(path).get("materials", {})
+
+
+
+
+def saveMaterial(name, settings, path=None):
+    """Store settings for a material in the config file, keeping everything
+    else in the file as it is.
+
+    Args:
+        name (string): Material name, e.g. "duralar5".
+        settings (dict): Setting name -> value.
+        path (string, optional): The path to the config file.
+    """
+    path = path or configFilePath
+    fileConfig = readConfigFile(path) if os.path.isfile(path) else {}
+    fileConfig.setdefault("materials", {})[name] = settings
+    writeConfigFile(fileConfig, path)
