@@ -85,9 +85,49 @@ Useful options (all of them: `python3 smtcut.py --help`):
 | `--border bx,by` | cut a frame this far (inches) around the stencil; `0,0` to disable |
 | `--toolholder 1` | tool holder with the blade (1 is the AutoBlade side) |
 | `--matrix a,b,c,d` | scale/skew correction from the calibration pattern |
+| `--thickness 5mil` | check paste release for this film thickness |
+| `--shrink 0.05` | shrink openings (mm) to compensate for the knife |
+| `--windowpane 2.5` | split openings at least 2.5 mm wide into panes |
+| `--material NAME` | use saved settings (see below) |
 | `--cutter raw` | the original output to stdout for Cameo 1/2 and `file2graphtec.py` |
 
 The stencil is rotated 90° on the mat (Gerber X runs along the feed) but never mirrored. For a bottom-side stencil, flip the cut film over.
+
+## Stencil design
+
+These work on Gerber files read by the built-in reader.
+
+**Paste-release check.** Give the film thickness and every opening is checked against the IPC-7525 rules of thumb: area ratio (opening area ÷ wall area) of at least 0.66, and width ÷ thickness of at least 1.5. Below those, paste tends to stay in the opening instead of printing on the pad.
+
+```
+python3 smtcut.py --dry_run --hardware Silhouette_Cameo5_Alpha --thickness 5mil paste.gbr
+```
+
+```
+paste release: 46 of 147 openings are below the IPC-7525 guidelines at 0.127 mm (5.0 mil) film; paste may stay in them
+  all openings would pass with film up to 0.066 mm (2.6 mil)
+  worst (Gerber coordinates, mm):
+    at (   2.30,    1.42)  0.10 x 1.00 mm  area ratio 0.35  aspect ratio 0.78
+```
+
+The check only reports; it never stops a job.
+
+**Shrink.** `--shrink 0.05` offsets every opening inward by 0.05 mm to make up for the knife spreading the cut (the original author measured about 2 mil). Square corners stay square. Openings narrower than twice the shrink are dropped, with a warning. The release check runs before the shrink, on the openings you want to end up with.
+
+**Window-paning.** Large openings, such as QFN centre pads, print too much paste if they're cut as one hole. `--windowpane 2.5` splits every opening whose narrow side is at least 2.5 mm into a grid of panes, sized for `--pane_coverage` (default 0.65, so 65% of the pad gets paste). Webs are kept at least 0.2 mm wide.
+
+## Saved materials
+
+Once a material cuts well, save its settings so you don't have to retype them:
+
+```
+python3 smtcut.py --dry_run --hardware Silhouette_Cameo5_Alpha --speed 2,2 --force 8,30 \
+    --depth 2 --thickness 5mil --shrink 0.05 --media_size 8.5,11 --save_material duralar5 paste.gbr
+python3 smtcut.py --material duralar5 paste.gbr
+python3 smtcut.py --list_materials
+```
+
+A material stores speed, force, AutoBlade depth, tool holder, blade diameter, overcut, mat, media size, thickness, shrink and window-pane settings in `config.json` next to the scripts (not in git; `SMTCUT_CONFIG` points elsewhere). Options on the command line override the saved values, so `--material duralar5 --force 8,32` changes only the force.
 
 ## First cuts on a Cameo 5 Alpha
 
@@ -106,6 +146,7 @@ The speed and force defaults come from the original Cameo; nobody has tuned them
    python3 smtcut.py --depth 2 --media_size 8.5,11 --force 8,30 examples/fine_pitch_sampler.gbr
    ```
 4. For dimensional accuracy, cut `tests/test_calibrate.py --cameo`, measure the verniers, and pass the correction with `--matrix`.
+5. Save what works with `--save_material` (see [Saved materials](#saved-materials)).
 
 The calibration scripts in `tests/` default to the original stdout output; add `--cameo` (and optionally `--dry_run --hardware ... --transcript FILE`) to use the new backend.
 

@@ -15,6 +15,7 @@ import shutil
 import argparse
 
 import pic
+import paste
 import config
 import optimize
 
@@ -74,6 +75,67 @@ def build_cutter(args):
                        bluetooth_name=args.bluetooth_name)
 
 
+# Settings a saved material can hold, with their built-in defaults (None
+# means "not set"). Values from config.py's defaults are filled in by
+# resolve_settings().
+MATERIAL_SETTINGS = {
+    'speed': None, 'force': None, 'media_size': None, 'depth': None,
+    'toolholder': 1, 'blade_diameter': 0.9, 'mat': 'cameo_12x12', 'overcut': 0.025,
+    'thickness': None, 'shrink': 0.0, 'windowpane': None, 'pane_coverage': 0.65,
+}
+
+
+def resolve_settings(args, cnf):
+    """Explicit options win, then the saved material, then the defaults.
+       Optionally save the result as a material."""
+    defaults = dict(MATERIAL_SETTINGS, speed=cnf["speed"], force=cnf["force"],
+                    media_size=cnf["mediaSize"])
+    preset = {}
+    if args.material:
+        materials = config.getMaterials()
+        if args.material not in materials:
+            known = ", ".join(sorted(materials)) or "none saved yet"
+            print(f"ERROR: no saved material '{args.material}' in {config.configFilePath} "
+                  f"(known: {known})", file=sys.stderr)
+            sys.exit(1)
+        preset = materials[args.material]
+        print(f"material {args.material}: " + ", ".join(f"{k}={v}" for k, v in sorted(preset.items())),
+              file=sys.stderr)
+    for key, default in defaults.items():
+        if getattr(args, key) is None:
+            setattr(args, key, preset.get(key, default))
+    if args.save_material:
+        settings = {k: getattr(args, k) for k in MATERIAL_SETTINGS if getattr(args, k) is not None}
+        config.saveMaterial(args.save_material, settings)
+        print(f"saved material {args.save_material} in {config.configFilePath}", file=sys.stderr)
+
+
+def design_openings(geom, args):
+    """Window-pane, check paste release, shrink; return SMTCut strokes."""
+    import gerber_reader
+    if args.windowpane:
+        geom, split, warnings = paste.windowpane(geom, args.windowpane, args.pane_coverage)
+        for w in warnings:
+            print(f"warning: window-paning: {w}", file=sys.stderr)
+        print(f"window-paned {split} openings to {args.pane_coverage:.0%} coverage", file=sys.stderr)
+    # the check looks at the openings as designed; --shrink only compensates
+    # for the knife, so the cut openings should end up close to these
+    if args.thickness:
+        lines, _, _ = paste.release_report(geom, args.thickness)
+        for line in lines:
+            print(line, file=sys.stderr)
+    if args.shrink:
+        geom, lost = paste.shrink(geom, args.shrink)
+        print(f"shrank openings by {args.shrink} mm", file=sys.stderr)
+        if lost:
+            print(f"warning: {lost} openings are narrower than twice the shrink and "
+                  f"were dropped", file=sys.stderr)
+    strokes = []
+    for ring in gerber_reader.rings_mm(geom):
+        strokes.append([(x / 25.4, y / 25.4) for (x, y) in ring])
+    return strokes
+
+
 def main():
     # Parse arguments.
     cnf = config.getDefaultConfig()
@@ -97,13 +159,13 @@ def main():
         help=f'cut a border around the bounding box of the gerber file; 0,0 to disable (default: {dBorder})')
     parser.add_argument('--matrix', type=floats, default=cnf["matrix"],
         help=f'transform coordinates by [a b;c d] (default: identity transform {dMatrix})')
-    parser.add_argument('--speed', type=floats, default=cnf["speed"],
+    parser.add_argument('--speed', type=floats, default=None,
         help=f'use speed s in device units; s2,s3 for multiple passes (default: {dSpeed})')
-    parser.add_argument('--force', type=floats, default=cnf["force"],
+    parser.add_argument('--force', type=floats, default=None,
         help=f'use force f in device units; f2,f3 for multiple passes (default: first pass {cnf["force"][0]}, second pass {cnf["force"][1]})')
     parser.add_argument('--cut_mode', type=int, choices=[0,1], default=cnf["cutMode"],
         help=f'0 for highest accuracy (fine pitch), 1 for highest speed (default: {cnf["cutMode"]})')
-    parser.add_argument('--media_size', type=floats, default=cnf["mediaSize"],
+    parser.add_argument('--media_size', type=floats, default=None,
         help=f'size of media: width across the carriage, length along the feed (default: {dMediaSize} inches)')
     parser.add_argument('--rotate', type=float, dest='theta', default=0.,
         help=f'rotate counterclockwise by theta degrees (default: no rotation)')
@@ -126,32 +188,70 @@ def main():
              'and tools/preview.py)')
     cut.add_argument('--hardware', metavar='NAME',
         help='force the cutter model, e.g. Silhouette_Cameo5_Alpha')
-    cut.add_argument('--toolholder', type=int, choices=[1, 2], default=1,
+    cut.add_argument('--toolholder', type=int, choices=[1, 2], default=None,
         help='tool holder with the blade (default: 1, the AutoBlade side)')
     cut.add_argument('--depth', type=int, choices=range(0, 11), metavar='0-10', default=None,
         help='AutoBlade depth; omit to leave the blade where it is')
-    cut.add_argument('--blade_diameter', type=float, default=0.9,
+    cut.add_argument('--blade_diameter', type=float, default=None,
         help='drag-knife offset in mm for corner compensation (default: 0.9)')
-    cut.add_argument('--mat', default='cameo_12x12',
+    cut.add_argument('--mat', default=None,
         choices=['cameo_12x12', 'cameo_12x24', 'portrait_8x12', 'portrait_8_5x12',
                  'cameo_plus_15x15', 'cameo_pro_24x24', 'none'],
         help='cutting mat (default: cameo_12x12); none means media fed without a mat, '
              'which needs --media_size')
-    cut.add_argument('--overcut', type=float, default=0.025,
+    cut.add_argument('--overcut', type=float, default=None,
         help='extend each straight cut at both ends, mm (default: 0.025, as the original 0.001 inch)')
     cut.add_argument('--bluetooth_name', metavar='NAME',
         help='connect over Bluetooth LE to the cutter advertising NAME (needs bleak)')
 
-    parser.add_argument('input_filename')
+    design = parser.add_argument_group('stencil design (built-in Gerber reader only)')
+    design.add_argument('--thickness', type=paste.parse_thickness, default=None, metavar='T',
+        help='film thickness, e.g. 0.127, 0.127mm or 5mil; reports openings that fail the '
+             'IPC-7525 paste-release guidelines (area ratio 0.66, aspect ratio 1.5)')
+    design.add_argument('--shrink', type=float, default=None, metavar='MM',
+        help='offset every opening inward by MM to compensate for the knife spreading '
+             'the cut (the original advice was about 2 mil, 0.05 mm); negative grows them')
+    design.add_argument('--windowpane', type=float, default=None, metavar='MM',
+        help='split openings whose narrow side is at least MM into a grid of panes '
+             '(e.g. QFN centre pads); off by default')
+    design.add_argument('--pane_coverage', type=float, default=None, metavar='FRACTION',
+        help='paste coverage of window-paned openings (default: 0.65)')
+
+    mat = parser.add_argument_group('saved materials')
+    mat.add_argument('--material', metavar='NAME',
+        help='load saved settings for NAME from config.json; explicit options still win')
+    mat.add_argument('--save_material', metavar='NAME',
+        help='save the speed, force, depth, thickness, shrink and other cutting settings '
+             'of this run as NAME in config.json')
+    mat.add_argument('--list_materials', action='store_true',
+        help='list saved materials and exit')
+
+    parser.add_argument('input_filename', nargs='?')
     args = parser.parse_args()
+
+    if args.list_materials:
+        materials = config.getMaterials()
+        if not materials:
+            print(f"no saved materials in {config.configFilePath}")
+        for name, settings in sorted(materials.items()):
+            print(name + ": " + ", ".join(f"{k}={v}" for k, v in sorted(settings.items())))
+        return
+
+    if not args.input_filename:
+        parser.error('the input file is required')
 
     # Check if file exists.
     if not os.path.isfile(args.input_filename):
         print(f"ERROR: File '{args.input_filename}' can't be found. Exiting.", file=sys.stderr)
         sys.exit(1)
 
+    resolve_settings(args, cnf)
+
     extension = os.path.splitext(args.input_filename)[1][1:].lower()
     if extension in ('pdf',) + INKSCAPE_EXTENSIONS or args.legacy_gerbv:
+        if args.thickness or args.shrink or args.windowpane:
+            print("warning: thickness, shrink and window-pane settings only apply to Gerber "
+                  "files read by the built-in reader; ignored for this input.", file=sys.stderr)
         strokes = legacy_strokes(args.input_filename, extension)
     else:
         import gerber_reader
@@ -165,6 +265,7 @@ def main():
         print(f"read {len(strokes)} outlines from {reader.stats['flashes']} flashes, "
               f"{reader.stats['draws']} draws and {reader.stats['regions']} regions",
               file=sys.stderr)
+        strokes = design_openings(geom, args)
 
     if not strokes:
         print("ERROR: no geometry found in the input file. Exiting.", file=sys.stderr)
